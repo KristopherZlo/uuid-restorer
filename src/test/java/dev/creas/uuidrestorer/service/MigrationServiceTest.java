@@ -4,6 +4,8 @@ import dev.creas.uuidrestorer.config.UuidRestorerConfig;
 import dev.creas.uuidrestorer.data.PlayerBinding;
 import dev.creas.uuidrestorer.runtime.ResolvedProfile;
 import dev.creas.uuidrestorer.runtime.ServerAccess;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionPreference;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionScope;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,6 +69,56 @@ class MigrationServiceTest {
         assertFalse(migrate.changed());
         assertEquals("conflict", migrate.migrationState());
         assertEquals("playerdata", migrate.conflictState());
+    }
+
+    @Test
+    void resolveSelectionOfflinePromotesOfflineConflictDataToPremiumUuid() throws Exception {
+        ServerAccess server = serverAccess(tempDir);
+        UuidRestorerConfig config = UuidRestorerConfig.defaults();
+        PlayerBinding binding = binding("OfflineWins");
+        MigrationService service = new MigrationService();
+
+        Path playerdataDir = tempDir.resolve("playerdata");
+        Files.createDirectories(playerdataDir);
+        Path source = playerdataDir.resolve(binding.offlineUuid + ".dat");
+        Path target = playerdataDir.resolve(binding.onlineUuid + ".dat");
+        Files.writeString(source, "offline");
+        Files.writeString(target, "premium");
+
+        MigrationReport report = service.resolveSelection(server, config, binding, ResolutionScope.PLAYERDATA, ResolutionPreference.OFFLINE);
+
+        assertTrue(report.changed());
+        assertEquals("migrated", report.migrationState());
+        assertFalse(report.hasConflict());
+        assertFalse(Files.exists(source));
+        assertTrue(Files.exists(target));
+        assertEquals("offline", Files.readString(target));
+        assertTrue(Files.exists(tempDir.resolve("uuid-restorer-backups")));
+    }
+
+    @Test
+    void resolveSelectionPremiumKeepsPremiumConflictDataAndRemovesOfflineSource() throws Exception {
+        ServerAccess server = serverAccess(tempDir);
+        UuidRestorerConfig config = UuidRestorerConfig.defaults();
+        PlayerBinding binding = binding("PremiumWins");
+        MigrationService service = new MigrationService();
+
+        Path playerdataDir = tempDir.resolve("playerdata");
+        Files.createDirectories(playerdataDir);
+        Path source = playerdataDir.resolve(binding.offlineUuid + ".dat");
+        Path target = playerdataDir.resolve(binding.onlineUuid + ".dat");
+        Files.writeString(source, "offline");
+        Files.writeString(target, "premium");
+
+        MigrationReport report = service.resolveSelection(server, config, binding, ResolutionScope.PLAYERDATA, ResolutionPreference.PREMIUM);
+
+        assertTrue(report.changed());
+        assertEquals("migrated", report.migrationState());
+        assertFalse(report.hasConflict());
+        assertFalse(Files.exists(source));
+        assertTrue(Files.exists(target));
+        assertEquals("premium", Files.readString(target));
+        assertTrue(Files.exists(tempDir.resolve("uuid-restorer-backups")));
     }
 
     private static ServerAccess serverAccess(Path root) {

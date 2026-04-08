@@ -10,6 +10,8 @@ import dev.creas.uuidrestorer.runtime.AuthlibCompat;
 import dev.creas.uuidrestorer.runtime.ResolvedProfile;
 import dev.creas.uuidrestorer.runtime.ServerAccess;
 import dev.creas.uuidrestorer.service.LoginDecision;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionPreference;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionScope;
 import net.minecraft.util.Uuids;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -178,6 +180,32 @@ class UuidRestorerControllerTest {
 
         assertEquals(LoginDecision.Action.DENY, decision.action());
         assertTrue(decision.message().contains("offline and premium player data"));
+    }
+
+    @Test
+    void resolveBindingConflictUpdatesStoredMigrationState() throws Exception {
+        UuidRestorerController controller = new UuidRestorerController(tempDir);
+        controller.reload();
+
+        PlayerBinding binding = createBinding("Alice", PlayerBinding.SOURCE_MANUAL_CONFIRMED, true);
+        BindingStore store = new BindingStore(tempDir.resolve("bindings.json"));
+        store.load();
+        store.put(binding);
+
+        Path playerdataDir = tempDir.resolve("playerdata");
+        Files.createDirectories(playerdataDir);
+        Files.writeString(playerdataDir.resolve(binding.offlineUuid + ".dat"), "offline");
+        Files.writeString(playerdataDir.resolve(binding.onlineUuid + ".dat"), "premium");
+
+        controller.reload();
+        TestServerAccess server = new TestServerAccess(tempDir);
+
+        assertTrue(controller.resolveBindingConflict(server, "Alice", ResolutionScope.PLAYERDATA, ResolutionPreference.OFFLINE).orElseThrow().changed());
+
+        PlayerBinding updated = controller.getBinding("Alice").orElseThrow();
+        assertEquals("migrated", updated.migrationState);
+        assertEquals("none", updated.conflictState);
+        assertEquals("offline", Files.readString(playerdataDir.resolve(binding.onlineUuid + ".dat")));
     }
 
     @Test

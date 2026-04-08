@@ -9,6 +9,8 @@ import dev.creas.uuidrestorer.UuidRestorerController;
 import dev.creas.uuidrestorer.UuidRestorerMod;
 import dev.creas.uuidrestorer.data.PlayerBinding;
 import dev.creas.uuidrestorer.service.MigrationReport;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionPreference;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionScope;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
@@ -49,7 +51,37 @@ public final class UuidRestorerCommands {
                     .executes(context -> executeSafely(context.getSource(), "unbind", () -> executeUnbind(context.getSource(), StringArgumentType.getString(context, "nick"))))))
             .then(CommandManager.literal("migrate")
                 .then(CommandManager.argument("nick", StringArgumentType.word())
-                    .executes(context -> executeSafely(context.getSource(), "migrate", () -> executeMigrate(context.getSource(), StringArgumentType.getString(context, "nick"))))));
+                    .executes(context -> executeSafely(context.getSource(), "migrate", () -> executeMigrate(context.getSource(), StringArgumentType.getString(context, "nick"))))))
+            .then(CommandManager.literal("resolve")
+                .then(CommandManager.argument("nick", StringArgumentType.word())
+                    .then(createResolveNode(ResolutionScope.PLAYERDATA))
+                    .then(createResolveNode(ResolutionScope.STATS))
+                    .then(createResolveNode(ResolutionScope.ADVANCEMENTS))
+                    .then(createResolveNode(ResolutionScope.ALL))));
+    }
+
+    private static LiteralArgumentBuilder<ServerCommandSource> createResolveNode(ResolutionScope scope) {
+        return CommandManager.literal(scope.serializedName())
+            .then(CommandManager.literal(ResolutionPreference.OFFLINE.serializedName())
+                .executes(context -> executeSafely(
+                    context.getSource(),
+                    "resolve",
+                    () -> executeResolve(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "nick"),
+                        scope,
+                        ResolutionPreference.OFFLINE
+                    ))))
+            .then(CommandManager.literal(ResolutionPreference.PREMIUM.serializedName())
+                .executes(context -> executeSafely(
+                    context.getSource(),
+                    "resolve",
+                    () -> executeResolve(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "nick"),
+                        scope,
+                        ResolutionPreference.PREMIUM
+                    ))));
     }
 
     private static int executeSafely(ServerCommandSource source, String action, CommandAction actionHandler) {
@@ -78,9 +110,10 @@ public final class UuidRestorerCommands {
         source.sendFeedback(() -> Text.literal("Cached textures: " + (playerBinding.hasTextures() ? "present" : "missing")), false);
         source.sendFeedback(() -> Text.literal("Migration state: " + playerBinding.migrationState + ", conflict: " + playerBinding.conflictState), false);
         report.ifPresent(migration -> {
-            source.sendFeedback(() -> Text.literal("playerdata source=" + migration.playerdata().sourceExists() + " target=" + migration.playerdata().targetExists()), false);
-            source.sendFeedback(() -> Text.literal("stats source=" + migration.stats().sourceExists() + " target=" + migration.stats().targetExists()), false);
-            source.sendFeedback(() -> Text.literal("advancements source=" + migration.advancements().sourceExists() + " target=" + migration.advancements().targetExists()), false);
+            sendBucketState(source, ResolutionScope.PLAYERDATA, migration.playerdata());
+            sendBucketState(source, ResolutionScope.STATS, migration.stats());
+            sendBucketState(source, ResolutionScope.ADVANCEMENTS, migration.advancements());
+            sendConflictHelp(source, nickname, migration);
         });
         return 1;
     }
@@ -105,6 +138,7 @@ public final class UuidRestorerCommands {
         source.sendFeedback(() -> Text.literal("Bound " + nickname + " to premium UUID " + playerBinding.onlineUuid), false);
         source.sendFeedback(() -> Text.literal("Binding source: " + playerBinding.normalizedBindingSource() + " (" + playerBinding.trustLabel() + ")"), false);
         source.sendFeedback(() -> Text.literal("Conflict state: " + playerBinding.conflictState + ", migration state: " + playerBinding.migrationState), false);
+        UuidRestorerMod.controller().inspectBinding(source.getServer(), nickname).ifPresent(migration -> sendConflictHelp(source, nickname, migration));
         return 1;
     }
 
@@ -142,7 +176,58 @@ public final class UuidRestorerCommands {
 
         MigrationReport migrationReport = report.get();
         source.sendFeedback(() -> Text.literal("Migration state: " + migrationReport.migrationState() + ", conflict: " + migrationReport.conflictState()), false);
+        sendConflictHelp(source, nickname, migrationReport);
         return migrationReport.hasConflict() ? 0 : 1;
+    }
+
+    private static int executeResolve(ServerCommandSource source, String nickname, ResolutionScope scope, ResolutionPreference preference) {
+        Optional<MigrationReport> report = UuidRestorerMod.controller().resolveBindingConflict(source.getServer(), nickname, scope, preference);
+        if (report.isEmpty()) {
+            source.sendError(Text.literal("No binding for " + nickname + "."));
+            return 0;
+        }
+
+        MigrationReport migrationReport = report.get();
+        if (!migrationReport.changed()) {
+            source.sendError(Text.literal("No applicable files were changed for " + scope.serializedName() + " using " + preference.serializedName() + ". Check /uuidrestorer status " + nickname + "."));
+            sendConflictHelp(source, nickname, migrationReport);
+            return 0;
+        }
+
+        source.sendFeedback(() -> Text.literal("Resolved " + scope.serializedName() + " in favor of " + preference.serializedName() + " data."), false);
+        source.sendFeedback(() -> Text.literal("Migration state: " + migrationReport.migrationState() + ", conflict: " + migrationReport.conflictState()), false);
+        sendConflictHelp(source, nickname, migrationReport);
+        return migrationReport.hasConflict() ? 0 : 1;
+    }
+
+    private static void sendBucketState(ServerCommandSource source, ResolutionScope scope, MigrationReport.FileState state) {
+        source.sendFeedback(
+            () -> Text.literal(
+                scope.serializedName()
+                    + " offline=" + state.sourceExists()
+                    + " premium=" + state.targetExists()
+                    + " conflict=" + state.conflict()
+            ),
+            false
+        );
+    }
+
+    private static void sendConflictHelp(ServerCommandSource source, String nickname, MigrationReport report) {
+        if (!report.hasConflict()) {
+            return;
+        }
+
+        source.sendFeedback(() -> Text.literal("Resolve with: /uuidrestorer resolve " + nickname + " <playerdata|stats|advancements|all> <offline|premium>"), false);
+        if (report.playerdata().conflict()) {
+            source.sendFeedback(() -> Text.literal("playerdata conflict: /uuidrestorer resolve " + nickname + " playerdata <offline|premium>"), false);
+        }
+        if (report.stats().conflict()) {
+            source.sendFeedback(() -> Text.literal("stats conflict: /uuidrestorer resolve " + nickname + " stats <offline|premium>"), false);
+        }
+        if (report.advancements().conflict()) {
+            source.sendFeedback(() -> Text.literal("advancements conflict: /uuidrestorer resolve " + nickname + " advancements <offline|premium>"), false);
+        }
+        source.sendFeedback(() -> Text.literal("offline = keep old offline UUID data and move it onto the premium UUID; premium = keep the current premium UUID data."), false);
     }
 
     @FunctionalInterface

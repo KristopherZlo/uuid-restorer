@@ -14,6 +14,8 @@ import dev.creas.uuidrestorer.runtime.ServerAccess;
 import dev.creas.uuidrestorer.service.LoginDecision;
 import dev.creas.uuidrestorer.service.MigrationReport;
 import dev.creas.uuidrestorer.service.MigrationService;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionPreference;
+import dev.creas.uuidrestorer.service.MigrationService.ResolutionScope;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Uuids;
 
@@ -207,6 +209,21 @@ public final class UuidRestorerController {
     Optional<MigrationReport> inspectBinding(ServerAccess server, String nickname) {
         UuidRestorerConfig currentConfig = config;
         return bindingStore.get(normalize(nickname)).map(binding -> migrationService.inspect(server, currentConfig, binding));
+    }
+
+    public Optional<MigrationReport> resolveBindingConflict(MinecraftServer server, String nickname, ResolutionScope scope, ResolutionPreference preference) {
+        return resolveBindingConflict(new MinecraftServerAccess(server), nickname, scope, preference);
+    }
+
+    Optional<MigrationReport> resolveBindingConflict(ServerAccess server, String nickname, ResolutionScope scope, ResolutionPreference preference) {
+        UuidRestorerConfig currentConfig = config;
+        return bindingStore.get(normalize(nickname)).map(binding -> {
+            MigrationReport report = migrationService.resolveSelection(server, currentConfig, binding, scope, preference);
+            if (applyMigrationState(binding, report)) {
+                bindingStore.put(binding);
+            }
+            return report;
+        });
     }
 
     private UuidRestorerConfig loadConfig() {
