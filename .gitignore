@@ -1,0 +1,55 @@
+# Gradle and build output
+.gradle/
+build/
+out/
+bin/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Local runtime data and logs
+run/
+logs/
+crash-reports/
+config/
+*.log
+*.tmp
+*.pid
+*.stacktrace
+hs_err_pid*
+replay_pid*
+
+# Local Minecraft server files
+eula.txt
+server.properties
+usercache.json
+usernamecache.json
+ops.json
+whitelist.json
+banned-ips.json
+banned-players.json
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.jks
+*.keystore
+*.secret
+*.token
+*.credentials
+
+# Local diagnostics
+*.javap.txt
+
+# OS files
+.DS_Store
+Thumbs.db

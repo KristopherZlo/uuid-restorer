@@ -1,0 +1,126 @@
+plugins {
+    id 'fabric-loom' version '1.16.1'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven {
+        name = "Fabric"
+        url = uri("https://maven.fabricmc.net/")
+    }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    testImplementation "org.junit.jupiter:junit-jupiter:6.0.3"
+    testImplementation "org.mockito:mockito-junit-jupiter:5.23.0"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+}
+
+def taskRequested = { Collection<String> names ->
+    gradle.startParameter.taskNames.any { requested ->
+        names.any { name -> requested == name || requested.endsWith(":${name}") }
+    }
+}
+
+def smokeClientRequested = taskRequested(["smokeClientLaunch", "smokeGameLaunches"])
+def smokeServerRequested = taskRequested(["smokeServerLaunch", "smokeGameLaunches"])
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.register("compatSmoke", Test) {
+    group = "verification"
+    description = "Runs the authlib compatibility smoke tests against modern and legacy-style fixtures."
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("dev.creas.uuidrestorer.runtime.AuthlibCompatTest")
+    }
+}
+
+tasks.named("runClient").configure {
+    if (smokeClientRequested) {
+        jvmArgs("-Duuidrestorer.smoke.client=true")
+    }
+}
+
+tasks.named("runServer").configure {
+    if (smokeServerRequested) {
+        jvmArgs("-Duuidrestorer.smoke.server=true")
+        args("--nogui")
+    }
+}
+
+def smokeServerLaunch = tasks.register("smokeServerLaunch") {
+    group = "verification"
+    description = "Launches the dedicated server and exits automatically after UUID Restorer finishes startup."
+    dependsOn(tasks.named("runServer"))
+}
+
+def smokeClientLaunch = tasks.register("smokeClientLaunch") {
+    group = "verification"
+    description = "Launches the Minecraft client and exits automatically after UUID Restorer finishes startup."
+    dependsOn(tasks.named("runClient"))
+}
+
+smokeClientLaunch.configure {
+    mustRunAfter(smokeServerLaunch)
+}
+
+tasks.register("smokeGameLaunches") {
+    group = "verification"
+    description = "Runs both dedicated-server and client smoke launch checks."
+    dependsOn(smokeServerLaunch, smokeClientLaunch)
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+
+    repositories {
+    }
+}

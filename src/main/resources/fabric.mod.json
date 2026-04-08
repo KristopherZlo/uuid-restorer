@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "uuidrestorer",
+  "version": "${version}",
+  "name": "UUID Restorer",
+  "description": "Restores premium UUIDs, player data and skins for offline Fabric servers.",
+  "authors": [
+    "ImZlo"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.creas.uuidrestorer.UuidRestorerMod"
+    ],
+    "client": [
+      "dev.creas.uuidrestorer.UuidRestorerClientMod"
+    ]
+  },
+  "mixins": [
+    "uuidrestorer.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "minecraft": ">=1.21.8 <=1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

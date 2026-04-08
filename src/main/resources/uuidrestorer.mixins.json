@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "dev.creas.uuidrestorer.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerLoginNetworkHandlerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
