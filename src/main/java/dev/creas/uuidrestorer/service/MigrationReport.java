@@ -1,8 +1,18 @@
 package dev.creas.uuidrestorer.service;
 
-public record MigrationReport(FileState playerdata, FileState stats, FileState advancements, boolean changed) {
+public record MigrationReport(
+    FileState playerdata,
+    FileState playerdataOld,
+    FileState stats,
+    FileState advancements,
+    boolean changed,
+    boolean onlineTargetAvailable
+) {
     public boolean hasConflict() {
-        return playerdata.conflict() || stats.conflict() || advancements.conflict();
+        return playerdata.conflict()
+            || playerdataOld.conflict()
+            || stats.conflict()
+            || advancements.conflict();
     }
 
     public String conflictState() {
@@ -12,6 +22,10 @@ public record MigrationReport(FileState playerdata, FileState stats, FileState a
         if (playerdata.conflict()) {
             conflicts++;
             single = "playerdata";
+        }
+        if (playerdataOld.conflict()) {
+            conflicts++;
+            single = "playerdata_old";
         }
         if (stats.conflict()) {
             conflicts++;
@@ -35,16 +49,33 @@ public record MigrationReport(FileState playerdata, FileState stats, FileState a
         if (hasConflict()) {
             return "conflict";
         }
+        if (!onlineTargetAvailable) {
+            return anySourceExists() ? "offline_only" : "no_data";
+        }
         if (changed) {
             return "migrated";
         }
-        if (playerdata.sourceExists() || stats.sourceExists() || advancements.sourceExists()) {
+        if (anySourceExists()) {
             return "pending";
         }
-        if (playerdata.targetExists() || stats.targetExists() || advancements.targetExists()) {
+        if (anyTargetExists()) {
             return "migrated";
         }
         return "no_data";
+    }
+
+    private boolean anySourceExists() {
+        return playerdata.sourceExists()
+            || playerdataOld.sourceExists()
+            || stats.sourceExists()
+            || advancements.sourceExists();
+    }
+
+    private boolean anyTargetExists() {
+        return playerdata.targetExists()
+            || playerdataOld.targetExists()
+            || stats.targetExists()
+            || advancements.targetExists();
     }
 
     public record FileState(boolean enabled, boolean sourceExists, boolean targetExists) {

@@ -6,6 +6,12 @@ public final class PlayerBinding {
     public static final String SOURCE_MANUAL_CONFIRMED = "manual_confirmed";
     public static final String SOURCE_LEGACY_AUTO = "legacy_auto";
 
+    public enum LookupState {
+        FOUND,
+        NOT_FOUND,
+        LOOKUP_FAILED
+    }
+
     public String canonicalName;
     public String lookupKey;
     public UUID onlineUuid;
@@ -17,9 +23,14 @@ public final class PlayerBinding {
     public String migrationState;
     public String conflictState;
     public String bindingSource;
+    public LookupState lookupState;
+
+    public boolean hasOnlineProfile() {
+        return normalizedLookupState() == LookupState.FOUND && onlineUuid != null;
+    }
 
     public boolean hasTextures() {
-        return texturesValue != null && !texturesValue.isBlank();
+        return hasOnlineProfile() && texturesValue != null && !texturesValue.isBlank();
     }
 
     public String normalizedBindingSource() {
@@ -37,6 +48,16 @@ public final class PlayerBinding {
         return isTrusted() ? "trusted" : "insecure";
     }
 
+    public LookupState normalizedLookupState() {
+        if (lookupState == LookupState.FOUND && onlineUuid == null) {
+            return LookupState.NOT_FOUND;
+        }
+        if (lookupState != null) {
+            return lookupState;
+        }
+        return onlineUuid != null ? LookupState.FOUND : LookupState.NOT_FOUND;
+    }
+
     public PlayerBinding copy() {
         PlayerBinding copy = new PlayerBinding();
         copy.canonicalName = canonicalName;
@@ -50,6 +71,7 @@ public final class PlayerBinding {
         copy.migrationState = migrationState;
         copy.conflictState = conflictState;
         copy.bindingSource = bindingSource;
+        copy.lookupState = lookupState;
         return copy;
     }
 }

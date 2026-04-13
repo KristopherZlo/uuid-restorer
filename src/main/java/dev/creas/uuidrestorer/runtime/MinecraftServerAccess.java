@@ -22,6 +22,11 @@ public final class MinecraftServerAccess implements ServerAccess {
     }
 
     @Override
+    public boolean isDedicatedServer() {
+        return server.getClass().getName().contains(".server.dedicated.");
+    }
+
+    @Override
     public Optional<ResolvedProfile> resolveProfileByName(String name) {
         return MOJANG_PROFILE_RESOLVER.resolveProfileByName(name);
     }

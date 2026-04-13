@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import dev.creas.uuidrestorer.UuidRestorerMod;
+import dev.creas.uuidrestorer.service.UuidRestorerTrace;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -36,6 +37,7 @@ public final class BindingStore {
             if (!Files.exists(file)) {
                 bindings = new LinkedHashMap<>();
                 save();
+                UuidRestorerTrace.log("binding-store", "load created new bindings file path=" + file.toAbsolutePath());
                 return;
             }
 
@@ -46,11 +48,13 @@ public final class BindingStore {
 
             SanitizedBindings sanitized = sanitizeBindings(loaded);
             bindings = sanitized.bindings();
+            UuidRestorerTrace.log("binding-store", "load path=" + file.toAbsolutePath() + " entries=" + bindings.size() + " sanitized=" + sanitized.changed());
             if (sanitized.changed()) {
                 save();
             }
         } catch (IOException | JsonParseException | IllegalStateException exception) {
             UuidRestorerMod.LOGGER.error("Failed to load bindings from {}", file, exception);
+            UuidRestorerTrace.log("binding-store", "load failed path=" + file.toAbsolutePath(), exception);
             quarantineBrokenFile();
             bindings = new LinkedHashMap<>();
             save();
@@ -65,23 +69,31 @@ public final class BindingStore {
                 gson.toJson(bindings, MAP_TYPE, writer);
             }
             Files.move(tempFile, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            UuidRestorerTrace.log("binding-store", "save path=" + file.toAbsolutePath() + " entries=" + bindings.size());
         } catch (IOException exception) {
             UuidRestorerMod.LOGGER.error("Failed to save bindings to {}", file, exception);
+            UuidRestorerTrace.log("binding-store", "save failed path=" + file.toAbsolutePath(), exception);
         }
     }
 
     public synchronized Optional<PlayerBinding> get(String lookupKey) {
         PlayerBinding binding = bindings.get(normalize(lookupKey));
+        UuidRestorerTrace.log("binding-store", "get key=" + normalize(lookupKey) + " hit=" + (binding != null));
+        if (binding != null) {
+            UuidRestorerTrace.binding("binding-store", "get.binding", binding);
+        }
         return Optional.ofNullable(binding == null ? null : binding.copy());
     }
 
     public synchronized void put(PlayerBinding binding) {
         bindings.put(normalize(binding.lookupKey), binding.copy());
+        UuidRestorerTrace.binding("binding-store", "put.binding", binding);
         save();
     }
 
     public synchronized boolean remove(String lookupKey) {
         boolean removed = bindings.remove(normalize(lookupKey)) != null;
+        UuidRestorerTrace.log("binding-store", "remove key=" + normalize(lookupKey) + " removed=" + removed);
         if (removed) {
             save();
         }
@@ -120,13 +132,19 @@ public final class BindingStore {
         if (binding == null) {
             return null;
         }
-        if (isBlank(binding.lookupKey) || isBlank(binding.canonicalName) || binding.onlineUuid == null || binding.offlineUuid == null) {
+        if (isBlank(binding.lookupKey) || isBlank(binding.canonicalName) || binding.offlineUuid == null) {
             return null;
         }
 
         PlayerBinding sanitized = binding.copy();
         sanitized.lookupKey = normalize(sanitized.lookupKey);
         sanitized.bindingSource = sanitized.normalizedBindingSource();
+        sanitized.lookupState = sanitized.normalizedLookupState();
+        if (!sanitized.hasOnlineProfile()) {
+            sanitized.onlineUuid = null;
+            sanitized.texturesValue = null;
+            sanitized.texturesSignature = null;
+        }
         if (isBlank(sanitized.migrationState)) {
             sanitized.migrationState = "pending";
         }
@@ -145,8 +163,10 @@ public final class BindingStore {
         try {
             Files.move(file, brokenFile, StandardCopyOption.REPLACE_EXISTING);
             UuidRestorerMod.LOGGER.warn("Moved broken bindings file to {}", brokenFile);
+            UuidRestorerTrace.log("binding-store", "quarantined broken file to=" + brokenFile.toAbsolutePath());
         } catch (IOException moveException) {
             UuidRestorerMod.LOGGER.error("Failed to move broken bindings file {}", file, moveException);
+            UuidRestorerTrace.log("binding-store", "failed to quarantine broken file path=" + file.toAbsolutePath(), moveException);
         }
     }
 

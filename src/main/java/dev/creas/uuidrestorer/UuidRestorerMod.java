@@ -1,6 +1,7 @@
 package dev.creas.uuidrestorer;
 
 import dev.creas.uuidrestorer.command.UuidRestorerCommands;
+import dev.creas.uuidrestorer.service.UuidRestorerTrace;
 import dev.creas.uuidrestorer.smoke.SmokeLaunchSupport;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -20,12 +21,14 @@ public final class UuidRestorerMod implements ModInitializer {
     @Override
     public void onInitialize() {
         Path baseDirectory = FabricLoader.getInstance().getConfigDir().resolve("uuid-restorer");
+        UuidRestorerTrace.initialize(baseDirectory);
         controller = new UuidRestorerController(baseDirectory);
         controller.reload();
         SmokeLaunchSupport.registerServerHook();
 
         CommandRegistrationCallback.EVENT.register(UuidRestorerCommands::register);
         LOGGER.info("UUID Restorer initialized");
+        UuidRestorerTrace.log("mod", "initialized version=" + version() + " baseDirectory=" + baseDirectory.toAbsolutePath());
     }
 
     public static UuidRestorerController controller() {

@@ -3,6 +3,11 @@
   "package": "dev.creas.uuidrestorer.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "EntityTrackerAccessor",
+    "PlayerManagerMixin",
+    "PlayerEntityAccessor",
+    "ServerChunkLoadingManagerAccessor",
+    "ServerChunkManagerAccessor",
     "ServerLoginNetworkHandlerMixin"
   ],
   "injectors": {

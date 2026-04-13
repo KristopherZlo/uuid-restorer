@@ -7,6 +7,8 @@ import java.util.UUID;
 public interface ServerAccess {
     boolean isOnlineMode();
 
+    boolean isDedicatedServer();
+
     Optional<ResolvedProfile> resolveProfileByName(String name);
 
     Optional<ResolvedProfile> resolveProfileById(UUID id);

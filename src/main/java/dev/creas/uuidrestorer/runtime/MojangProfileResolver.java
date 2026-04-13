@@ -4,6 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.creas.uuidrestorer.service.UuidRestorerTrace;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -39,37 +41,50 @@ public final class MojangProfileResolver {
     }
 
     public Optional<ResolvedProfile> resolveProfileByName(String nickname) {
+        UuidRestorerTrace.log("mojang", "resolveProfileByName nickname=" + nickname);
         JsonObject basicProfile = requestJson(nameLookupBaseUri.resolve(encodePathSegment(nickname)));
         if (basicProfile == null) {
+            UuidRestorerTrace.log("mojang", "resolveProfileByName nickname=" + nickname + " result=empty");
             return Optional.empty();
         }
 
         UUID uuid = parseUuid(readRequiredString(basicProfile, "id"));
         String canonicalName = readRequiredString(basicProfile, "name");
+        UuidRestorerTrace.log("mojang", "resolveProfileByName nickname=" + nickname + " basicUuid=" + uuid + " canonicalName=" + canonicalName);
         try {
             Optional<ResolvedProfile> hydratedProfile = resolveProfileById(uuid);
             if (hydratedProfile.isPresent()) {
+                UuidRestorerTrace.log("mojang", "resolveProfileByName nickname=" + nickname + " hydrated=" + UuidRestorerTrace.describeProfile(hydratedProfile.get()));
                 return hydratedProfile;
             }
         } catch (RuntimeException ignored) {
+            UuidRestorerTrace.log("mojang", "resolveProfileByName nickname=" + nickname + " hydration failed, falling back to basic profile");
         }
 
-        return Optional.of(new ResolvedProfile(uuid, canonicalName, null, null));
+        ResolvedProfile fallback = new ResolvedProfile(uuid, canonicalName, null, null);
+        UuidRestorerTrace.log("mojang", "resolveProfileByName nickname=" + nickname + " fallback=" + UuidRestorerTrace.describeProfile(fallback));
+        return Optional.of(fallback);
     }
 
     public Optional<ResolvedProfile> resolveProfileById(UUID id) {
+        UuidRestorerTrace.log("mojang", "resolveProfileById uuid=" + id);
         JsonObject profile = requestJson(URI.create(sessionLookupBaseUri + compactUuid(id) + "?unsigned=false"));
         if (profile == null) {
+            UuidRestorerTrace.log("mojang", "resolveProfileById uuid=" + id + " result=empty");
             return Optional.empty();
         }
 
-        return Optional.of(parseGameProfile(profile));
+        ResolvedProfile resolved = parseGameProfile(profile);
+        UuidRestorerTrace.log("mojang", "resolveProfileById uuid=" + id + " result=" + UuidRestorerTrace.describeProfile(resolved));
+        return Optional.of(resolved);
     }
 
     public Optional<ResolvedProfile> fetchTextures(ResolvedProfile profile) {
         if (profile == null || profile.uuid() == null) {
+            UuidRestorerTrace.log("mojang", "fetchTextures skipped profile=" + UuidRestorerTrace.describeProfile(profile));
             return Optional.empty();
         }
+        UuidRestorerTrace.log("mojang", "fetchTextures uuid=" + profile.uuid());
         return resolveProfileById(profile.uuid());
     }
 
@@ -82,6 +97,7 @@ public final class MojangProfileResolver {
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            UuidRestorerTrace.log("mojang", "request uri=" + uri + " status=" + response.statusCode() + " bodyLength=" + (response.body() == null ? 0 : response.body().length()));
             if (response.statusCode() == 204 || response.statusCode() == 404) {
                 return null;
             }
@@ -99,8 +115,10 @@ public final class MojangProfileResolver {
             return parsed.getAsJsonObject();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            UuidRestorerTrace.log("mojang", "request interrupted uri=" + uri, exception);
             throw new IllegalStateException("Interrupted while contacting Mojang API", exception);
         } catch (IOException exception) {
+            UuidRestorerTrace.log("mojang", "request failed uri=" + uri, exception);
             throw new IllegalStateException("Failed to contact Mojang API", exception);
         }
     }
